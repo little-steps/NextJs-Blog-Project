@@ -7,6 +7,9 @@ import { Button } from "../ui/button";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTransition } from "react";
+import { createPost, updatePost } from "@/app/action/post-action";
+import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
 const postSchema = z.object({
   title: z
@@ -20,24 +23,69 @@ const postSchema = z.object({
   content: z.string().min(10, "Content must be at least 3 characters"),
 });
 
+interface PostFormProps {
+  isEditing?: boolean;
+  post?: {
+    id: number;
+    title: string;
+    description: string;
+    content: string;
+    slug: string;
+  };
+}
 type PostFormValues = z.infer<typeof postSchema>;
-export default function PostForm() {
-  const { isPending, startTransition } = useTransition();
+export default function PostForm({ isEditing, post }: PostFormProps) {
+  const [isPending, startTransition] = useTransition();
+  const router = useRouter();
   const {
     register,
     handleSubmit,
     formState: { errors },
   } = useForm<PostFormValues>({
     resolver: zodResolver(postSchema),
-    defaultValues: {
-      title: "",
-      description: "",
-      content: "",
-    },
+    defaultValues:
+      isEditing && post
+        ? {
+            title: post.title,
+            description: post.description,
+            content: post.content,
+          }
+        : {
+            title: "",
+            description: "",
+            content: "",
+          },
   });
 
   const onFormSubmit = async (data: PostFormValues) => {
-    console.log(data);
+    startTransition(async () => {
+      try {
+        const formData = new FormData();
+        formData.append("title", data.title);
+        formData.append("description", data.description);
+        formData.append("content", data.content);
+
+        let res;
+        if (isEditing && post) {
+          res = await updatePost(post.id, formData);
+        } else {
+          res = await createPost(formData);
+        }
+        console.log(res);
+        if (res.success) {
+          toast(
+            isEditing ? "Post updated succesfully" : "Post created succesfully"
+          );
+          router.refresh();
+          router.push("/");
+        } else {
+          toast(res.message);
+        }
+      } catch (error) {
+        console.log(error);
+        toast("Failed to created post.");
+      }
+    });
   };
   return (
     <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-6">
@@ -77,7 +125,11 @@ export default function PostForm() {
         )}
       </div>
       <Button type="submit" disabled={isPending} className="mt-5 w-full">
-        {isPending ? "Creating Post..." : "Create Post"}
+        {isPending
+          ? "Creating Post..."
+          : isEditing
+            ? "Update Post"
+            : "Create Post"}
       </Button>
     </form>
   );
